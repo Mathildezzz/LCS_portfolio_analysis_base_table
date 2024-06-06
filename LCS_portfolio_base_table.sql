@@ -59,25 +59,11 @@ member_final_tag AS (
          ON mbr.member_detail_id::integer = member_final_tag.crm_member_id::integer
 )
 
-,all_purchase_rk AS (
+, purchase_rk AS (
     SELECT crm_member_id,
             original_order_id,
             order_paid_time,
-            ROW_NUMBER () OVER (PARTITION BY crm_member_id ORDER BY order_paid_time ASC) AS rk
-    FROM (
-        SELECT DISTINCT trans.crm_member_id,
-          trans.original_order_id,
-          trans.order_paid_time
-        FROM edw.f_member_order_detail trans
-        WHERE is_rrp_sales_type = 1 
-          AND if_eff_order_tag IS TRUE
-          )
-)
-
-,ytd_purchase_rk AS (
-    SELECT crm_member_id,
-            original_order_id,
-            order_paid_time,
+            ROW_NUMBER () OVER (PARTITION BY crm_member_id ORDER BY order_paid_time ASC) AS rk,
             ROW_NUMBER () OVER (PARTITION BY crm_member_id, extract('year' from order_paid_time) ORDER BY order_paid_time ASC) AS ytd_rk
     FROM (
         SELECT DISTINCT trans.crm_member_id,
@@ -285,12 +271,9 @@ SELECT
    product.product_cn_lcs_launch_date                                                                                           AS product_cn_lcs_launch_date,
    CASE WHEN product_status_list.product_status IS NOT NULL THEN product_status_list.product_status ELSE 'NOT FOUND' END        AS product_status,
    product.product_rrp                                                                                                          AS product_rrp,
-   CASE WHEN adult_sku.lego_sku_id IS NOT NULL AND product.product_rrp >= 499 AND product.product_rrp < 1600 THEN 'MPP'
-           WHEN adult_sku.lego_sku_id IS NOT NULL AND product.product_rrp < 499 THEN 'LPP'
-           WHEN adult_sku.lego_sku_id IS NOT NULL AND product.product_rrp >= 1600 THEN 'HPP'
-           WHEN adult_sku.lego_sku_id IS NULL AND product.product_rrp >= 399 AND product.product_rrp < 1000 THEN 'MPP'
-           WHEN adult_sku.lego_sku_id IS NULL AND product.product_rrp < 399 THEN 'LPP'
-           WHEN adult_sku.lego_sku_id IS NULL AND product.product_rrp >= 1000 THEN 'HPP'
+   CASE WHEN product.product_rrp > 0 AND product.product_rrp < 300 THEN 'LPP'
+        WHEN product.product_rrp >= 300 AND product.product_rrp < 800 THEN 'MPP'
+        WHEN product.product_rrp >= 800 THEN 'HPP'
    END                                                                                                                           AS product_rrp_price_range,
    CASE WHEN adult_sku.lego_sku_id IS NOT NULL THEN 'adult product' ELSE 'kids product' END                                      AS product_kids_vs_adult_sku,
    
@@ -303,13 +286,13 @@ SELECT
 
    
   CASE WHEN trans.crm_member_id IS NULL THEN 'non_member'
-        WHEN all_purchase_rk.rk = 1 THEN 'lifetime_initial'
-        WHEN all_purchase_rk.rk >= 2 THEN 'lifetime_repurchase'
+        WHEN purchase_rk.rk = 1 THEN 'lifetime_initial'
+        WHEN purchase_rk.rk >= 2 THEN 'lifetime_repurchase'
   END                                                                                                                                        AS order_type_initial_vs_repurchase_lifetime, --new request 将2024改为对应年ytd
    
   CASE WHEN trans.crm_member_id IS NULL THEN 'non_member'
-        WHEN ytd_purchase_rk.ytd_rk = 1 THEN 'ytd_initial'
-        WHEN ytd_purchase_rk.ytd_rk >=2 THEN 'ytd_repurchase'
+        WHEN purchase_rk.ytd_rk = 1 THEN 'ytd_initial'
+        WHEN purchase_rk.ytd_rk >=2 THEN 'ytd_repurchase'
   END                                                                                                                                        AS order_type_initial_vs_repurchase_ytd,
     
       
@@ -379,15 +362,10 @@ LEFT JOIN edw.d_dl_city_tier city_tier_list
 --tutorial.mz_city_tier_v2 替换成edw.d_dl_city_tier
       ON ps.city_cn= city_tier_list.city_chn
        
-LEFT JOIN all_purchase_rk
-      ON trans.crm_member_id::integer = all_purchase_rk.crm_member_id::integer
-      AND trans.original_order_id = all_purchase_rk.original_order_id
-      AND trans.order_paid_time = all_purchase_rk.order_paid_time
-LEFT JOIN ytd_purchase_rk
-       ON trans.crm_member_id::integer = ytd_purchase_rk.crm_member_id::integer
-      AND trans.original_order_id = ytd_purchase_rk.original_order_id
-      AND trans.order_paid_time = ytd_purchase_rk.order_paid_time 
-      
+LEFT JOIN purchase_rk
+      ON trans.crm_member_id::integer = purchase_rk.crm_member_id::integer
+      AND trans.original_order_id = purchase_rk.original_order_id
+      AND trans.order_paid_time = purchase_rk.order_paid_time
 LEFT JOIN (
          select lego_sku_id,lego_sku_name_cn,lego_sku_name_en ,rsp AS product_rrp, cn_line ,cn_lcs_launch_date as product_cn_lcs_launch_date 
          FROM edw.d_dl_product_info_latest
