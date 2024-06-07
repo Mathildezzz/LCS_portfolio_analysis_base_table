@@ -63,8 +63,8 @@ member_final_tag AS (
     SELECT crm_member_id,
             original_order_id,
             order_paid_time,
-            ROW_NUMBER () OVER (PARTITION BY crm_member_id ORDER BY order_paid_time ASC) AS rk,
-            ROW_NUMBER () OVER (PARTITION BY crm_member_id, extract('year' from order_paid_time) ORDER BY order_paid_time ASC) AS ytd_rk
+            dense_rank () OVER (PARTITION BY crm_member_id ORDER BY order_paid_time ASC) AS rk,
+            dense_rank () OVER (PARTITION BY crm_member_id, extract('year' from order_paid_time) ORDER BY order_paid_time ASC) AS ytd_rk
     FROM (
         SELECT DISTINCT trans.crm_member_id,
           trans.original_order_id,
@@ -280,10 +280,9 @@ SELECT
 
   -----------------------------------------------------------------------
    --- 订单维度： 是lifestage首单还是复购
- 
-   ROW_NUMBER () OVER (PARTITION BY trans.crm_member_id ORDER BY trans.order_paid_time ASC)                                                  AS order_rk,
-   ROW_NUMBER () OVER (PARTITION BY trans.crm_member_id,EXTRACT('year' FROM DATE(trans.order_paid_time)) ORDER BY trans.order_paid_time ASC) AS order_rk_ytd,
 
+   purchase_rk.rk                                                                                                                           AS order_rk,
+   purchase_rk.ytd_rk                                                                                                                       AS order_rk_ytd,
    
   CASE WHEN trans.crm_member_id IS NULL THEN 'non_member'
         WHEN purchase_rk.rk = 1 THEN 'lifetime_initial'
