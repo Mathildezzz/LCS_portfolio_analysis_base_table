@@ -366,7 +366,28 @@ LEFT JOIN purchase_rk
       AND trans.original_order_id = purchase_rk.original_order_id
       AND trans.order_paid_time = purchase_rk.order_paid_time
 LEFT JOIN (
-         select lego_sku_id,lego_sku_name_cn,lego_sku_name_en ,rsp AS product_rrp, cn_line ,cn_lcs_launch_date as product_cn_lcs_launch_date 
+         select lego_sku_id,lego_sku_name_cn,lego_sku_name_en ,rsp AS product_rrp,
+         CASE WHEN lego_sku_id IN ('10280',
+                              '10281',
+                              '10289',
+                              '10309',
+                              '10311',
+                              '10313',
+                              '10314',
+                              '10328',
+                              '10329',
+                              '10340',
+                              '10368',
+                              '10369',
+                              '10370',
+                              '40460',
+                              '40461',
+                              '40524',
+                              '40646',
+                              '40647',
+                              '40725',
+                              '40747') THEN top_theme ELSE cn_line END AS cn_line,    -- PID乱标
+         cn_lcs_launch_date as product_cn_lcs_launch_date 
          FROM edw.d_dl_product_info_latest
           ) product
     ON trans.lego_sku_id = product.lego_sku_id
