@@ -116,6 +116,7 @@ SELECT
     trans.sales_solar_calendar_year                                                                   AS transaction_solar_calendar_year,
     trans.sales_solar_calendar_month                                                                  AS transaction_solar_calendar_month,
     trans.sales_lego_calendar_year                                                                    AS transaction_lego_calendar_year,
+    trans.sales_lego_calendar_month                                                                   AS transaction_lego_calendar_month,
     trans.sales_lego_calendar_week                                                                    AS transaction_legor_calendar_week,
     case when trans.date_id >= '2021-12-26' and trans.date_id<='2022-02-28' then 'CNY'
         when trans.date_id >= '2022-12-26' and trans.date_id<='2023-01-31' then 'CNY'
@@ -134,6 +135,7 @@ SELECT
         when trans.date_id >= '2024-11-20' and trans.date_id<='2024-12-25' then 'HOLIDAY'
     else 'OTHERS'
     end                                                                                               AS transaction_marketing_campaign_calendar,
+    trans.distributor_name,
     trans.lego_store_code,
     trans.store_name,
     CASE WHEN trans.crm_member_id IS NULL THEN 'non_member' ELSE 'member' END                         AS is_member_sales, 
@@ -275,6 +277,7 @@ SELECT
         WHEN product.product_rrp >= 300 AND product.product_rrp < 800 THEN 'MPP'
         WHEN product.product_rrp >= 800 THEN 'HPP'
    END                                                                                                                           AS product_rrp_price_range,
+   product.product_age_mark                                                                                                      AS product_age_mark,
    CASE WHEN adult_sku.lego_sku_id IS NOT NULL THEN 'adult product' ELSE 'kids product' END                                      AS product_kids_vs_adult_sku,
    
 
@@ -346,7 +349,25 @@ left join bh
 LEFT JOIN member_profile
       ON trans.crm_member_id::integer = member_profile.member_detail_id::integer
       
-LEFT JOIN tutorial.adult_sku_list_BM_y22_y23_y24            adult_sku
+LEFT JOIN (SELECT DISTINCT lego_sku_id
+             FROM edw.d_dl_product_info_latest
+            WHERE 
+              -- Filter out rows that don't start with a number or a fraction like '1 1/2'
+              TRIM(age_mark) ~ '^[0-9]+([ ]*[0-9]*/[0-9]+)?'
+              
+              -- Handle '1 1/2' by converting it to a decimal value
+              AND COALESCE(
+                  -- Convert fraction '1 1/2' to a decimal value like '1.5'
+                  CASE 
+                      WHEN TRIM(age_mark) ~ '^[0-9]+ [0-9]+/[0-9]+' THEN
+                          CAST(SPLIT_PART(TRIM(age_mark), ' ', 1) AS NUMERIC) + 
+                          CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 1) AS NUMERIC) / 
+                          CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 2) AS NUMERIC)
+                      -- Remove non-numeric characters after leading digits (like '+', '-' etc.)
+                      ELSE CAST(REGEXP_REPLACE(TRIM(age_mark), '[^0-9]+.*', '') AS NUMERIC)
+                  END, 
+                  0) >= 13
+            )  adult_sku    ----- age mark with leading number greater than or equal to 13
       ON trans.lego_sku_id = adult_sku.lego_sku_id
       
 LEFT JOIN (
@@ -366,32 +387,10 @@ LEFT JOIN purchase_rk
       AND trans.original_order_id = purchase_rk.original_order_id
       AND trans.order_paid_time = purchase_rk.order_paid_time
 LEFT JOIN (
-         select lego_sku_id,lego_sku_name_cn,lego_sku_name_en ,rsp AS product_rrp,
-         CASE WHEN lego_sku_id IN ('10280',
-                              '10281',
-                              '10289',
-                              '10309',
-                              '10311',
-                              '10313',
-                              '10314',
-                              '10328',
-                              '10329',
-                              '10340',
-                              '10368',
-                              '10369',
-                              '10370',
-                              '40460',
-                              '40461',
-                              '40524',
-                              '40646',
-                              '40647',
-                              '40725',
-                              '40747') THEN top_theme ELSE cn_line END AS cn_line,    -- PID乱标
-         cn_lcs_launch_date as product_cn_lcs_launch_date 
+         select lego_sku_id,lego_sku_name_cn,lego_sku_name_en ,rsp AS product_rrp,cn_line, cn_lcs_launch_date as product_cn_lcs_launch_date,age_mark AS product_age_mark 
          FROM edw.d_dl_product_info_latest
           ) product
     ON trans.lego_sku_id = product.lego_sku_id
-
 left join parent_order 
     on trans.original_order_id=parent_order.original_order_id 
     and trans.date_id=parent_order.date_id
