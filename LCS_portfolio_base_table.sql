@@ -117,7 +117,7 @@ SELECT
     trans.sales_solar_calendar_month                                                                  AS transaction_solar_calendar_month,
     trans.sales_lego_calendar_year                                                                    AS transaction_lego_calendar_year,
     trans.sales_lego_calendar_month                                                                   AS transaction_lego_calendar_month,
-    trans.sales_lego_calendar_week                                                                    AS transaction_legor_calendar_week,
+    trans.sales_lego_calendar_week                                                                    AS transaction_lego_calendar_week,
     case when trans.date_id >= '2021-12-26' and trans.date_id<='2022-02-28' then 'CNY'
         when trans.date_id >= '2022-12-26' and trans.date_id<='2023-01-31' then 'CNY'
         when trans.date_id >= '2023-12-26' and trans.date_id<='2024-02-29' then 'CNY'
