@@ -9,8 +9,25 @@ WITH trans AS (
       CASE WHEN adult_sku.lego_sku_id IS NOT NULL THEN 'adult product' ELSE 'kids product' END     AS kids_vs_adult_sku
     FROM 
         edw.f_member_order_detail trans
-    LEFT JOIN 
-        tutorial.adult_sku_list_BM_y22_y23_y24  adult_sku
+    LEFT JOIN (SELECT DISTINCT lego_sku_id
+             FROM edw.d_dl_product_info_latest
+            WHERE 
+              -- Filter out rows that don't start with a number or a fraction like '1 1/2'
+              TRIM(age_mark) ~ '^[0-9]+([ ]*[0-9]*/[0-9]+)?'
+              
+              -- Handle '1 1/2' by converting it to a decimal value
+              AND COALESCE(
+                  -- Convert fraction '1 1/2' to a decimal value like '1.5'
+                  CASE 
+                      WHEN TRIM(age_mark) ~ '^[0-9]+ [0-9]+/[0-9]+' THEN
+                          CAST(SPLIT_PART(TRIM(age_mark), ' ', 1) AS NUMERIC) + 
+                          CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 1) AS NUMERIC) / 
+                          CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 2) AS NUMERIC)
+                      -- Remove non-numeric characters after leading digits (like '+', '-' etc.)
+                      ELSE CAST(REGEXP_REPLACE(TRIM(age_mark), '[^0-9]+.*', '') AS NUMERIC)
+                  END, 
+                  0) >= 13
+            )  adult_sku    ----- age mark with leading number greater than or equal to 13
         ON trans.lego_sku_id = adult_sku.lego_sku_id
     WHERE is_rrp_sales_type = 1 
       AND if_eff_order_tag IS TRUE 
@@ -41,7 +58,7 @@ member_final_tag AS (
     SELECT mbr.member_detail_id,
       CASE WHEN mbr.gender = 1 THEN 'male' 
             WHEN mbr.gender = 2 THEN 'female'
-            WHEN mbr.gender = 0 THEN 'gender_unknown' END                                                                 AS gender,
+            WHEN mbr.gender = 0 THEN 'gender_unknown' END                                                                AS gender,
       EXTRACT(YEAR FROM CURRENT_DATE)  - EXTRACT('year' FROM DATE(mbr.birthday))                                         AS age,
       beneficiary_birthday,
       CASE WHEN beneficiary_birthday IS NULL THEN 0 ELSE 1 END                                                           AS has_birthday,
@@ -160,7 +177,7 @@ SELECT
         when bh.kid_age >13 and bh.kid_age <=17 then '13-17'
         when bh.kid_age >=18 then '18+'
         else 'unknown'
-    end                                                                                                                  AS profile_kid_age_group,
+    end                                                                                                                   AS profile_kid_age_group,
     CASE WHEN trans.crm_member_id IS NULL THEN 'non_member' 
          ELSE cast(member_profile.lcs_kids_vs_adult_member_shopper  as varchar) END                                       AS profile_kids_vs_adult_member_shopper,
    
@@ -195,7 +212,7 @@ SELECT
     END                                                                                                                   AS profile_tier_code,
     case
         WHEN trans.crm_member_id IS NULL THEN 'non_member'
-        when trans.join_date > trans.product_cn_lcs_launch_date and trans.eff_reg_channel like '%LCS%' then 'new_member'
+        when trans.join_date >= product.product_cn_lcs_launch_date and trans.eff_reg_channel like '%LCS%' then 'new_member'
         else 'existing_member'
     end                                                                                                                    AS profile_new_vs_existing_based_on_cn_lcs_launch_date, --cn_lcs_launch_date之后注册于LCS即为new，否则为existing
 
@@ -231,7 +248,24 @@ SELECT
                 AND EXTRACT(YEAR FROM last_year_order.date_id) = EXTRACT(YEAR FROM trans.date_id) - 1
                 AND last_year_order.is_rrp_sales_type = 1
                 AND last_year_order.if_eff_order_tag IS TRUE
-                and last_year_order.lego_sku_id in (select distinct lego_sku_id from tutorial.adult_sku_list_BM_y22_y23_y24 )
+                and last_year_order.lego_sku_id in (SELECT DISTINCT lego_sku_id
+                                                                 FROM edw.d_dl_product_info_latest
+                                                                WHERE 
+                                                                  -- Filter out rows that don't start with a number or a fraction like '1 1/2'
+                                                                  TRIM(age_mark) ~ '^[0-9]+([ ]*[0-9]*/[0-9]+)?'
+                                                                  
+                                                                  -- Handle '1 1/2' by converting it to a decimal value
+                                                                  AND COALESCE(
+                                                                      -- Convert fraction '1 1/2' to a decimal value like '1.5'
+                                                                      CASE 
+                                                                          WHEN TRIM(age_mark) ~ '^[0-9]+ [0-9]+/[0-9]+' THEN
+                                                                              CAST(SPLIT_PART(TRIM(age_mark), ' ', 1) AS NUMERIC) + 
+                                                                              CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 1) AS NUMERIC) / 
+                                                                              CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 2) AS NUMERIC)
+                                                                          -- Remove non-numeric characters after leading digits (like '+', '-' etc.)
+                                                                          ELSE CAST(REGEXP_REPLACE(TRIM(age_mark), '[^0-9]+.*', '') AS NUMERIC)
+                                                                      END, 
+                                                                      0) >= 13)
         ) THEN 'Y'
         ELSE 'N'
     END                                                                                                                      AS profile_if_buy_adult_sku_last_year --去年是否买过adult
@@ -246,7 +280,24 @@ SELECT
                 AND EXTRACT(YEAR FROM last_year_order.date_id) = EXTRACT(YEAR FROM trans.date_id) - 1
                 AND last_year_order.is_rrp_sales_type = 1
                 AND last_year_order.if_eff_order_tag IS TRUE
-                and last_year_order.lego_sku_id not in (select distinct lego_sku_id from tutorial.adult_sku_list_BM_y22_y23_y24 )
+                and last_year_order.lego_sku_id not in (SELECT DISTINCT lego_sku_id
+                                                                 FROM edw.d_dl_product_info_latest
+                                                                WHERE 
+                                                                  -- Filter out rows that don't start with a number or a fraction like '1 1/2'
+                                                                  TRIM(age_mark) ~ '^[0-9]+([ ]*[0-9]*/[0-9]+)?'
+                                                                  
+                                                                  -- Handle '1 1/2' by converting it to a decimal value
+                                                                  AND COALESCE(
+                                                                      -- Convert fraction '1 1/2' to a decimal value like '1.5'
+                                                                      CASE 
+                                                                          WHEN TRIM(age_mark) ~ '^[0-9]+ [0-9]+/[0-9]+' THEN
+                                                                              CAST(SPLIT_PART(TRIM(age_mark), ' ', 1) AS NUMERIC) + 
+                                                                              CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 1) AS NUMERIC) / 
+                                                                              CAST(SPLIT_PART(SPLIT_PART(TRIM(age_mark), ' ', 2), '/', 2) AS NUMERIC)
+                                                                          -- Remove non-numeric characters after leading digits (like '+', '-' etc.)
+                                                                          ELSE CAST(REGEXP_REPLACE(TRIM(age_mark), '[^0-9]+.*', '') AS NUMERIC)
+                                                                      END, 
+                                                                      0) >= 13)
         ) THEN 'Y'
         ELSE 'N'
     END                                                                                                                       AS profile_if_buy_kid_sku_last_year --去年是否买过kid
@@ -387,7 +438,13 @@ LEFT JOIN purchase_rk
       AND trans.original_order_id = purchase_rk.original_order_id
       AND trans.order_paid_time = purchase_rk.order_paid_time
 LEFT JOIN (
-         select lego_sku_id,lego_sku_name_cn,lego_sku_name_en ,rsp AS product_rrp,cn_line, cn_lcs_launch_date as product_cn_lcs_launch_date,age_mark AS product_age_mark 
+         select lego_sku_id,
+                lego_sku_name_cn,
+                lego_sku_name_en,
+                rsp AS product_rrp,
+                cn_line, 
+                CASE WHEN cn_lcs_on_street_date IS NOT NULL THEN cn_lcs_on_street_date ELSE cn_lcs_launch_date END as product_cn_lcs_launch_date,
+                age_mark AS product_age_mark 
          FROM edw.d_dl_product_info_latest
           ) product
     ON trans.lego_sku_id = product.lego_sku_id
