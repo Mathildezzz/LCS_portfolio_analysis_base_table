@@ -219,8 +219,8 @@ SELECT
 
    
     CASE WHEN trans.crm_member_id IS NULL THEN 'non_member'
-         WHEN trans.if_lcs_new_member_solar_calendar_ytd ='纯新会员' THEN 'new_member' 
-         WHEN trans.crm_member_id IS NOT NULL AND trans.if_lcs_new_member_solar_calendar_ytd !='纯新会员' THEN 'existing_member' 
+         WHEN trans.if_lcs_new_member_solar_calendar_ytd = 'LCS纯新会员' THEN 'new_member' 
+         WHEN trans.crm_member_id IS NOT NULL AND trans.if_lcs_new_member_solar_calendar_ytd = 'LCS存量会员' THEN 'existing_member' 
     END                                                                                                                    AS profile_new_vs_existing_based_on_YTD,
     
     CASE
